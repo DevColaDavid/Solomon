@@ -15,9 +15,10 @@ interface SidebarProps {
   activeProject: string | null;
   onSelectProject: (id: string | null) => void;
   isAdmin?: boolean;
+  onClose?: () => void;
 }
 
-export default function Sidebar({ projects, onRefresh, activeProject, onSelectProject, isAdmin }: SidebarProps) {
+export default function Sidebar({ projects, onRefresh, activeProject, onSelectProject, isAdmin, onClose }: SidebarProps) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "", color: "#8b5cf6", description: "" });
@@ -46,7 +47,10 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
   }
 
   return (
-    <aside className="w-56 flex-shrink-0 flex flex-col bg-[#09090b] border-r border-white/[0.06] h-screen sticky top-0 z-20">
+    <aside className="w-56 flex-shrink-0 flex flex-col bg-[#09090b] border-r border-white/[0.06] h-screen sticky top-0 z-20 relative">
+      {onClose && (
+        <button onClick={onClose} className="absolute top-4 right-3 w-6 h-6 flex items-center justify-center rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] transition-all text-base leading-none z-10">×</button>
+      )}
       {/* Logo */}
       <div className="px-5 py-5">
         <div className="flex items-center gap-2.5">
@@ -61,7 +65,7 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
       </div>
 
       {/* Nav */}
-      <div className="px-3 pb-2">
+      <div className="px-3 pb-2 flex flex-col gap-0.5">
         <button
           onClick={() => onSelectProject(null)}
           className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all ${
@@ -77,6 +81,16 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
             <rect x="8" y="8" width="5" height="5" rx="1.5" fill="currentColor" opacity="0.7"/>
           </svg>
           All Tasks
+        </button>
+        <button
+          onClick={() => router.push("/analytics")}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="flex-shrink-0">
+            <polyline points="1,11 4,7 7,9 10,4 13,5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.7"/>
+            <circle cx="13" cy="5" r="1" fill="currentColor" opacity="0.7"/>
+          </svg>
+          Analytics
         </button>
       </div>
 

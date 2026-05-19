@@ -52,7 +52,7 @@ const TaskCard = memo(function TaskCard({ task, onMove, onOpen, isDragging, onDr
           <span className={`w-1.5 h-1.5 rounded-full ${pStyle.dot}`} />
           {task.priority.charAt(0) + task.priority.slice(1).toLowerCase()}
         </span>
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+        <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
           {currentIdx > 0 && (
             <button onClick={() => onMove(task.id, STATUS_ORDER[currentIdx - 1])}
               className="w-5 h-5 flex items-center justify-center rounded-md bg-white/[0.05] hover:bg-white/[0.12] text-zinc-500 hover:text-zinc-200 transition-all text-xs">←</button>
@@ -359,13 +359,13 @@ export default function KanbanBoard({ projects, activeProjectId, onSelectProject
 
   return (
     <>
-      <div className="flex gap-4 h-full min-h-0">
+      <div className="flex gap-3 md:gap-4 h-full min-h-0 overflow-x-auto md:overflow-x-hidden snap-x snap-mandatory md:snap-none pb-2 md:pb-0">
         {COLUMNS.map(col => {
           const colTasks = tasksByStatus[col.id];
           const isOver = dragOverCol === col.id && !!draggingId && tasks.find(t => t.id === draggingId)?.status !== col.id;
 
           return (
-            <div key={col.id} className="flex flex-col flex-1 min-w-0 min-h-0"
+            <div key={col.id} className="flex flex-col flex-shrink-0 w-[85vw] snap-start min-h-0 md:flex-1 md:w-auto"
               onDragOver={e => { e.preventDefault(); setDragOverCol(col.id); }}
               onDragEnter={() => { dragCounter.current[col.id]++; setDragOverCol(col.id); }}
               onDragLeave={() => { dragCounter.current[col.id]--; if (dragCounter.current[col.id] === 0) setDragOverCol(null); }}

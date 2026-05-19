@@ -10,6 +10,7 @@ import ChronoMatrix from "@/components/sprint/ChronoMatrix";
 import KanbanBoard from "@/components/KanbanBoard";
 import dynamic from "next/dynamic";
 const ProfileModal = dynamic(() => import("@/components/profile/ProfileModal"), { ssr: false });
+import NotificationBell from "@/components/NotificationBell";
 import type { Project } from "@/types";
 
 function Clock() {
@@ -54,6 +55,8 @@ export default function DashboardPage() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileRightOpen, setMobileRightOpen] = useState(false);
 
   // Persist sidebar state
   useEffect(() => {
@@ -103,15 +106,50 @@ export default function DashboardPage() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#09090b] relative z-10">
 
-      {/* Left sidebar */}
+      {/* Desktop left sidebar */}
       {leftOpen && (
-        <Sidebar
-          projects={projects}
-          onRefresh={loadProjects}
-          activeProject={activeProject}
-          onSelectProject={setActiveProject}
-          isAdmin={isAdmin}
-        />
+        <div className="hidden md:block">
+          <Sidebar
+            projects={projects}
+            onRefresh={loadProjects}
+            activeProject={activeProject}
+            onSelectProject={setActiveProject}
+            isAdmin={isAdmin}
+          />
+        </div>
+      )}
+
+      {/* Mobile sidebar overlay */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden" onClick={() => setMobileMenuOpen(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div onClick={e => e.stopPropagation()} className="relative w-fit h-full">
+            <Sidebar
+              projects={projects}
+              onRefresh={loadProjects}
+              activeProject={activeProject}
+              onSelectProject={(id) => { setActiveProject(id); setMobileMenuOpen(false); }}
+              isAdmin={isAdmin}
+              onClose={() => setMobileMenuOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Mobile right panel overlay */}
+      {mobileRightOpen && (
+        <div className="fixed inset-0 z-50 md:hidden" onClick={() => setMobileRightOpen(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div onClick={e => e.stopPropagation()} className="absolute right-0 top-0 h-full w-[300px] bg-[#09090b] border-l border-white/[0.06] flex flex-col gap-3 p-4 overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-semibold tracking-widest text-zinc-600 uppercase">Widgets</span>
+              <button onClick={() => setMobileRightOpen(false)} className="w-6 h-6 flex items-center justify-center rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] transition-all text-base">×</button>
+            </div>
+            <WeatherWidget />
+            <CalendarWidget />
+            <ChronoMatrix projects={projects} />
+          </div>
+        </div>
       )}
 
       {/* Main content */}
@@ -119,7 +157,21 @@ export default function DashboardPage() {
 
         {/* Header */}
         <header className="flex items-center gap-2 px-4 py-3.5 border-b border-white/[0.05] flex-shrink-0 bg-[#09090b]/90 backdrop-blur-sm">
-          <CollapseButton collapsed={!leftOpen} onClick={toggleLeft} side="left" />
+          {/* Mobile hamburger */}
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="md:hidden w-7 h-7 flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.05] rounded transition-all flex-shrink-0"
+          >
+            <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+              <rect width="14" height="1.5" rx="0.75" fill="currentColor"/>
+              <rect y="4.25" width="14" height="1.5" rx="0.75" fill="currentColor"/>
+              <rect y="8.5" width="14" height="1.5" rx="0.75" fill="currentColor"/>
+            </svg>
+          </button>
+          {/* Desktop collapse button */}
+          <div className="hidden md:flex">
+            <CollapseButton collapsed={!leftOpen} onClick={toggleLeft} side="left" />
+          </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2.5">
@@ -139,7 +191,25 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <Clock />
+          <div className="hidden md:block">
+            <Clock />
+          </div>
+
+          <NotificationBell onSelectProject={setActiveProject} />
+
+          {/* Mobile widgets button */}
+          <button
+            onClick={() => setMobileRightOpen(true)}
+            title="Widgets"
+            className="md:hidden w-8 h-8 flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.05] rounded-xl transition-all flex-shrink-0"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+              <rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+              <rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+              <rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+            </svg>
+          </button>
 
           {/* Profile button */}
           <button
@@ -155,12 +225,14 @@ export default function DashboardPage() {
             }
           </button>
 
-          <CollapseButton collapsed={!rightOpen} onClick={toggleRight} side="right" />
+          <div className="hidden md:flex">
+            <CollapseButton collapsed={!rightOpen} onClick={toggleRight} side="right" />
+          </div>
         </header>
 
         {/* Content */}
         <div className="flex-1 flex overflow-hidden min-h-0">
-          <div className="flex-1 overflow-hidden p-5 flex flex-col min-w-0 min-h-0">
+          <div className="flex-1 overflow-hidden p-3 md:p-5 flex flex-col min-w-0 min-h-0">
             <KanbanBoard
               projects={projects}
               activeProjectId={activeProject}
@@ -169,9 +241,9 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Right panel */}
+          {/* Right panel - hidden on mobile */}
           {rightOpen && (
-            <aside className="w-[300px] flex-shrink-0 flex flex-col gap-3 p-4 overflow-y-auto border-l border-white/[0.05]">
+            <aside className="hidden md:flex w-[300px] flex-shrink-0 flex-col gap-3 p-4 overflow-y-auto border-l border-white/[0.05]">
               <WeatherWidget />
               <CalendarWidget />
               <ChronoMatrix projects={projects} />
