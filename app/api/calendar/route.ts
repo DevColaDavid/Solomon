@@ -1,0 +1,84 @@
+import { NextResponse } from "next/server";
+import { getAuthorizedUser } from "@/lib/getUser";
+import { db } from "@/lib/db";
+import { google } from "googleapis";
+
+async function getCalendarClient(userId: string, isAdmin: boolean) {
+  // Pull the user's Google OAuth tokens stored by Neon Auth (Better Auth)
+  const rows = await db.$queryRaw<{
+    accessToken: string | null;
+    refreshToken: string | null;
+    scope: string | null;
+  }[]>`
+    SELECT "accessToken", "refreshToken", "scope"
+    FROM neon_auth.account
+    WHERE "userId"::text = ${userId}
+      AND "providerId" = 'google'
+    LIMIT 1
+  `;
+
+  const account = rows[0];
+
+  if (account?.refreshToken) {
+    const client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+    client.setCredentials({
+      refresh_token: account.refreshToken,
+      access_token: account.accessToken ?? undefined,
+    });
+    return google.calendar({ version: "v3", auth: client });
+  }
+
+  // Fallback: env-var refresh token (admin only, for backwards compat)
+  if (isAdmin && process.env.GOOGLE_CALENDAR_REFRESH_TOKEN) {
+    const client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+    client.setCredentials({ refresh_token: process.env.GOOGLE_CALENDAR_REFRESH_TOKEN });
+    return google.calendar({ version: "v3", auth: client });
+  }
+
+  return null;
+}
+
+export async function GET() {
+  const auth = await getAuthorizedUser();
+  if (!auth.ok) return NextResponse.json({ error: "Unauthorized", events: [] }, { status: auth.status });
+
+  const calendar = await getCalendarClient(auth.userId, auth.isAdmin);
+
+  if (!calendar) {
+    return NextResponse.json({ error: "No calendar access token", events: [] }, { status: 200 });
+  }
+
+  try {
+    const now = new Date();
+    const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(now);   endOfDay.setHours(23, 59, 59, 999);
+
+    const res = await calendar.events.list({
+      calendarId: "primary",
+      timeMin: startOfDay.toISOString(),
+      timeMax: endOfDay.toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+    });
+
+    const events = (res.data.items ?? []).map(e => ({
+      id: e.id ?? "",
+      summary: e.summary ?? "Untitled Event",
+      start: e.start?.dateTime ?? e.start?.date ?? "",
+      end: e.end?.dateTime ?? e.end?.date ?? "",
+      location: e.location,
+      colorId: e.colorId,
+    }));
+
+    return NextResponse.json({ events });
+  } catch (err) {
+    console.error("Calendar error:", err);
+    return NextResponse.json({ error: "Failed to fetch events", events: [] }, { status: 500 });
+  }
+}

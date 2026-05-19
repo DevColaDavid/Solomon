@@ -1,0 +1,111 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Neon Auth (Better Auth) manages users in the neon_auth schema.
+// We reference userId (string) from Neon Auth directly in our models.
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum SprintMode {
+  FOCUS
+  SHORT_BREAK
+  LONG_BREAK
+}
+
+model WhitelistEntry {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  isAdmin   Boolean  @default(false)
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+model Project {
+  id          String          @id @default(cuid())
+  name        String
+  color       String          @default("#06b6d4")
+  description String?
+  userId      String
+  tasks       Task[]
+  sprints     SprintSession[]
+  createdAt   DateTime        @default(now())
+
+  @@index([userId])
+}
+
+model Task {
+  id          String         @id @default(cuid())
+  title       String
+  description String?
+  priority    Priority       @default(MEDIUM)
+  status      TaskStatus     @default(TODO)
+  startDate   DateTime?
+  dueDate     DateTime?
+  projectId   String
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId      String
+  assignees   TaskAssignee[]
+  subtasks    Subtask[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([userId, projectId])
+  @@index([userId, status])
+}
+
+model TaskAssignee {
+  id     String @id @default(cuid())
+  taskId String
+  userId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([userId])
+}
+
+model Subtask {
+  id        String   @id @default(cuid())
+  title     String
+  completed Boolean  @default(false)
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+model SprintSession {
+  id        String     @id @default(cuid())
+  taskName  String?
+  duration  Int
+  mode      SprintMode @default(FOCUS)
+  completed Boolean    @default(true)
+  projectId String?
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  userId    String
+  createdAt DateTime   @default(now())
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([projectId])
+}
