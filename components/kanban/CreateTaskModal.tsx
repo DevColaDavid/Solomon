@@ -52,7 +52,13 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, projects, 
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => titleRef.current?.focus(), 50);
-      fetch("/api/users").then(r => r.ok ? r.json() : { users: [] }).then(d => setUsers(d.users ?? [])).catch(() => {});
+      // Load only this project's contributors for assignment
+      fetch(`/api/projects/${projectId}/members`)
+        .then(r => r.ok ? r.json() : { members: [] })
+        .then(d => setUsers((d.members ?? []).map((m: { userId: string; name: string | null; email: string | null; image: string | null }) => ({
+          id: m.userId, name: m.name, email: m.email, image: m.image,
+        })))
+        ).catch(() => {});
       setForm(f => ({ ...f, status: defaultStatus, projectId }));
     } else {
       setForm({ title: "", description: "", priority: "MEDIUM", status: defaultStatus, projectId, startDate: "", dueDate: "" });
@@ -101,7 +107,18 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, projects, 
       });
     }
 
-    // Reload task with subtasks
+    // Persist selected contributors
+    if (contributors.length > 0) {
+      await Promise.all(contributors.map(uid =>
+        fetch(`/api/tasks/${task.id}/assignees`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: uid }),
+        })
+      ));
+    }
+
+    // Reload task with subtasks + assignees
     const fullRes = await fetch(`/api/tasks/${task.id}`);
     const fullData = fullRes.ok ? await fullRes.json() : { task };
     onCreated(fullData.task ?? task);
@@ -119,17 +136,17 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, projects, 
     <div
       ref={overlayRef}
       onClick={e => { if (e.target === overlayRef.current) onClose(); }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm md:p-4"
     >
-      <div className="w-full max-w-2xl bg-[#0d1117] border border-white/[0.08] rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+      <div className="w-full md:max-w-2xl bg-black/70 backdrop-blur-xl border border-white/[0.1] md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
+        <div className="flex items-center justify-between border-b border-white/[0.06]" style={{ padding: '1.25rem 1.75rem' }}>
           <h2 className="text-sm font-semibold text-zinc-100">New Task</h2>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-600 hover:text-zinc-200 hover:bg-white/[0.06] transition-all text-lg">×</button>
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="px-6 py-5 flex flex-col gap-5">
+          <div className="flex flex-col" style={{ padding: '1.5rem 1.75rem', gap: '1.5rem' }}>
             {/* Title */}
             <div>
               <input
@@ -156,7 +173,7 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, projects, 
             </div>
 
             {/* Grid: Priority + Status + Project */}
-            <div className="grid grid-cols-3 gap-3">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '1rem' }}>
               <div>
                 <label className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider block mb-1.5">Priority</label>
                 <div className="flex flex-col gap-1">
@@ -253,8 +270,8 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, projects, 
               </div>
             </div>
 
-            {/* Contributors */}
-            {users.length > 1 && (
+            {/* Contributors — from project's contributor list */}
+            {users.length > 0 && (
               <div>
                 <label className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider block mb-2">Contributors</label>
                 <div className="flex flex-wrap gap-2">
@@ -279,7 +296,7 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, projects, 
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-white/[0.06] flex justify-end gap-3">
+          <div className="border-t border-white/[0.06] flex justify-end gap-3" style={{ padding: '1.25rem 1.75rem' }}>
             <button type="button" onClick={onClose}
               className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-200 border border-white/[0.07] rounded-xl hover:border-white/[0.15] transition-all">
               Cancel

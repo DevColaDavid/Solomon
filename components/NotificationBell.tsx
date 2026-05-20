@@ -52,7 +52,12 @@ export default function NotificationBell({ onSelectProject }: Props) {
   useEffect(() => {
     load();
     const id = setInterval(load, 5 * 60 * 1000);
-    return () => clearInterval(id);
+    // Sync dismissed state when notifications page updates localStorage
+    function onStorage(e: StorageEvent) {
+      if (e.key === DISMISSED_KEY) setDismissed(getDismissed());
+    }
+    window.addEventListener("storage", onStorage);
+    return () => { clearInterval(id); window.removeEventListener("storage", onStorage); };
   }, [load]);
 
   // Close on outside click
@@ -151,6 +156,12 @@ export default function NotificationBell({ onSelectProject }: Props) {
               })}
             </div>
           )}
+          <div className="px-4 py-2.5 border-t border-white/[0.05]">
+            <a href="/notifications" onClick={() => setOpen(false)}
+              className="text-[11px] text-zinc-600 hover:text-cyan-400 transition-colors w-full text-center block">
+              View all notifications →
+            </a>
+          </div>
         </div>
       )}
     </div>

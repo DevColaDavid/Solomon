@@ -63,7 +63,7 @@ export default function ProfileModal({ isOpen, onClose }: Props) {
       onClick={e => { if (e.target === overlayRef.current) onClose(); }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
     >
-      <div className="w-full max-w-md bg-[#0d1117] border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-md bg-black/70 backdrop-blur-xl border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
           <h2 className="text-sm font-semibold text-zinc-100">Profile</h2>

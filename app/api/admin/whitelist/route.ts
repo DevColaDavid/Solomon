@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/getUser";
+import { requireAdmin, invalidateAuthCache } from "@/lib/getUser";
 import { db } from "@/lib/db";
 
 export async function GET() {
   const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ error: "Forbidden" }, { status: auth.status });
 
-  const entries = await db.whitelistEntry.findMany({ orderBy: { createdAt: "asc" } });
+  const entries = await db.appUser.findMany({ orderBy: { createdAt: "asc" } });
   return NextResponse.json({ entries });
 }
 
@@ -14,13 +14,13 @@ export async function POST(req: Request) {
   const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ error: "Forbidden" }, { status: auth.status });
 
-  const { email, note } = await req.json();
+  const { email, note, role } = await req.json();
   if (!email?.includes("@")) return NextResponse.json({ error: "Invalid email" }, { status: 400 });
 
-  const entry = await db.whitelistEntry.upsert({
+  const entry = await db.appUser.upsert({
     where: { email },
-    update: { note },
-    create: { email, note },
+    update: { note, ...(role && { role }) },
+    create: { email, note, role: role ?? "MEMBER" },
   });
   return NextResponse.json({ entry });
 }
@@ -29,11 +29,9 @@ export async function PATCH(req: Request) {
   const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ error: "Forbidden" }, { status: auth.status });
 
-  const { email, isAdmin } = await req.json();
-  const entry = await db.whitelistEntry.update({
-    where: { email },
-    data: { isAdmin },
-  });
+  const { email, role } = await req.json();
+  const entry = await db.appUser.update({ where: { email }, data: { role } });
+  invalidateAuthCache(email);
   return NextResponse.json({ entry });
 }
 
@@ -42,6 +40,6 @@ export async function DELETE(req: Request) {
   if (!auth.ok) return NextResponse.json({ error: "Forbidden" }, { status: auth.status });
 
   const { email } = await req.json();
-  await db.whitelistEntry.delete({ where: { email } });
+  await db.appUser.delete({ where: { email } });
   return NextResponse.json({ ok: true });
 }

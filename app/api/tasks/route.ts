@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getAuthorizedUser } from "@/lib/getUser";
 import { db } from "@/lib/db";
 import { Priority, TaskStatus } from "@prisma/client";
+import { enrichAssignees, enrichOneTask } from "@/lib/enrichAssignees";
+import { requireEditor } from "@/lib/getUser";
 
 const TASK_INCLUDE = {
   project: true,
@@ -27,11 +29,11 @@ export async function GET(req: Request) {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ tasks });
+  return NextResponse.json({ tasks: await enrichAssignees(tasks) });
 }
 
 export async function POST(req: Request) {
-  const auth = await getAuthorizedUser();
+  const auth = await requireEditor();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
   const { title, description, projectId, priority, dueDate, startDate, status } = await req.json();
@@ -53,5 +55,5 @@ export async function POST(req: Request) {
     include: TASK_INCLUDE,
   });
 
-  return NextResponse.json({ task });
+  return NextResponse.json({ task: await enrichOneTask(task) });
 }

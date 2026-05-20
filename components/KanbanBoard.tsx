@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import type { Task, Project } from "@/types";
 
 const TaskModal = dynamic(() => import("@/components/kanban/TaskModal"), { ssr: false });
 const CreateTaskModal = dynamic(() => import("@/components/kanban/CreateTaskModal"), { ssr: false });
+const CreateProjectModal = dynamic(() => import("@/components/project/CreateProjectModal"), { ssr: false });
+const EditProjectModal = dynamic(() => import("@/components/project/EditProjectModal"), { ssr: false });
 
 type Status = "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE";
 
@@ -18,12 +21,26 @@ const COLUMNS: { id: Status; label: string; color: string; dot: string; accent: 
 
 const STATUS_ORDER: Status[] = ["TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"];
 
-const PRIORITY_STYLE: Record<string, { badge: string; dot: string }> = {
-  CRITICAL: { badge: "text-red-400 bg-red-500/10 border-red-500/20",         dot: "bg-red-400" },
-  HIGH:     { badge: "text-orange-400 bg-orange-500/10 border-orange-500/20", dot: "bg-orange-400" },
-  MEDIUM:   { badge: "text-amber-400 bg-amber-500/10 border-amber-500/20",   dot: "bg-amber-400" },
-  LOW:      { badge: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", dot: "bg-emerald-400" },
+const PRIORITY_STYLE: Record<string, { badge: string; dot: string; strip: string }> = {
+  CRITICAL: { badge: "text-red-400 bg-red-500/10 border-red-500/20",            dot: "bg-red-400",     strip: "bg-red-500" },
+  HIGH:     { badge: "text-orange-400 bg-orange-500/10 border-orange-500/20",   dot: "bg-orange-400",  strip: "bg-orange-500" },
+  MEDIUM:   { badge: "text-amber-400 bg-amber-500/10 border-amber-500/20",      dot: "bg-amber-400",   strip: "bg-amber-500" },
+  LOW:      { badge: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",dot: "bg-emerald-400", strip: "bg-emerald-500" },
 };
+
+function relativeDue(dateStr: string): string {
+  const due = new Date(dateStr);
+  const now = new Date();
+  const dueMid = new Date(due); dueMid.setHours(0, 0, 0, 0);
+  const nowMid = new Date(now); nowMid.setHours(0, 0, 0, 0);
+  const diff = Math.round((dueMid.getTime() - nowMid.getTime()) / 86400000);
+  if (diff < -1) return `${Math.abs(diff)}d overdue`;
+  if (diff === -1) return "Yesterday";
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff <= 7) return `in ${diff}d`;
+  return due.toLocaleDateString("en", { month: "short", day: "numeric" });
+}
 
 const PRESET_COLORS = ["#06b6d4","#8b5cf6","#4ade80","#f59e0b","#f87171","#38bdf8","#fb923c","#a78bfa"];
 
@@ -42,11 +59,24 @@ const TaskCard = memo(function TaskCard({ task, onMove, onOpen, isDragging, onDr
       onDragStart={e => { e.dataTransfer.setData("taskId", task.id); e.dataTransfer.effectAllowed = "move"; onDragStart(); }}
       onDragEnd={onDragEnd}
       onClick={() => onOpen(task)}
-      className={`group relative bg-[#111116] border rounded-2xl p-4 cursor-pointer transition-all duration-150 select-none ${
-        isDragging ? "opacity-30 scale-95 border-white/10 cursor-grabbing"
-          : "border-white/[0.07] hover:border-white/[0.16] hover:shadow-xl hover:shadow-black/40 hover:-translate-y-0.5"
+      className={`group relative border rounded-2xl cursor-pointer transition-all duration-150 select-none backdrop-blur-sm ${
+        isDragging ? "opacity-30 scale-95 border-white/10 cursor-grabbing bg-white/[0.03]"
+          : "bg-white/[0.04] border-white/[0.08] hover:bg-white/[0.07] hover:border-white/[0.18] hover:shadow-xl hover:shadow-black/40 hover:-translate-y-0.5"
       }`}
+      style={{ padding: '0.875rem 0.875rem 0.875rem 1.125rem' }}
     >
+      {/* Priority strip — inset from corners so no overflow-hidden needed */}
+      <div className={`absolute left-0 w-[3px] ${pStyle.strip} opacity-70`} style={{ top: '0.75rem', bottom: '0.75rem', borderRadius: '0 2px 2px 0' }} />
+      {/* Drag handle — desktop only */}
+      <div className="hidden md:flex absolute top-3 right-3 flex-col gap-[3px] opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+        title="Drag to move">
+        {[0,1,2].map(i => (
+          <div key={i} className="flex gap-[3px]">
+            <div className="w-[3px] h-[3px] rounded-full bg-zinc-600" />
+            <div className="w-[3px] h-[3px] rounded-full bg-zinc-600" />
+          </div>
+        ))}
+      </div>
       <div className="flex items-center justify-between gap-2 mb-3">
         <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${pStyle.badge}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${pStyle.dot}`} />
@@ -94,8 +124,8 @@ const TaskCard = memo(function TaskCard({ task, onMove, onOpen, isDragging, onDr
           ))}
         </div>
         {task.dueDate && (
-          <span className={`text-[10px] font-medium ${isOverdue ? "text-red-400" : "text-zinc-600"}`}>
-            {isOverdue && "⚠ "}{new Date(task.dueDate).toLocaleDateString("en", { month: "short", day: "numeric" })}
+          <span className={`text-[10px] font-medium ${isOverdue ? "text-red-400" : task.status !== "DONE" && relativeDue(task.dueDate) === "Today" ? "text-amber-400" : "text-zinc-600"}`}>
+            {isOverdue && "⚠ "}{relativeDue(task.dueDate)}
           </span>
         )}
       </div>
@@ -162,7 +192,8 @@ const ProjectCard = memo(function ProjectCard({ project, onSelect, onUpdate, onD
   }
 
   return (
-    <div className="group relative bg-[#111116] border border-white/[0.07] hover:border-white/[0.14] rounded-2xl p-5 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/30 cursor-pointer"
+    <div className="group relative bg-white/[0.03] backdrop-blur-sm border border-white/[0.07] hover:border-white/[0.16] hover:bg-white/[0.06] rounded-2xl transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/40 cursor-pointer"
+      style={{ padding: '1.5rem 1.5rem' }}
       onClick={onSelect}>
       {/* Actions */}
       <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -198,37 +229,17 @@ const ProjectCard = memo(function ProjectCard({ project, onSelect, onUpdate, onD
   );
 });
 
-function ProjectOverview({ projects, onSelect, onRefresh }: {
-  projects: Project[]; onSelect: (id: string) => void; onRefresh: () => void;
+function ProjectOverview({ projects, onSelect, onRefresh, loading }: {
+  projects: Project[]; onSelect: (id: string) => void; onRefresh: () => void; loading?: boolean;
 }) {
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: "", color: "#8b5cf6", description: "" });
-  const [creating, setCreating] = useState(false);
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!createForm.name.trim()) return;
-    setCreating(true);
-    await fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(createForm),
-    });
-    setCreateForm({ name: "", color: "#8b5cf6", description: "" });
-    setShowCreate(false);
-    setCreating(false);
-    onRefresh();
-  }
 
   async function handleDelete(id: string) {
     await fetch(`/api/projects/${id}`, { method: "DELETE" });
     onRefresh();
   }
 
-  function handleUpdate(id: string, data: { name: string; color: string; description: string }) {
-    // optimistic update handled by parent refresh
-    onRefresh();
-  }
+  function handleUpdate() { onRefresh(); }
 
   return (
     <div className="flex flex-col gap-5 h-full">
@@ -237,39 +248,32 @@ function ProjectOverview({ projects, onSelect, onRefresh }: {
           <h2 className="text-base font-semibold text-zinc-100">Projects</h2>
           <p className="text-xs text-zinc-600 mt-0.5">Select a project to open its Kanban board</p>
         </div>
-        <button onClick={() => setShowCreate(v => !v)}
+        <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all">
-          {showCreate ? "Cancel" : "+ New Project"}
+          + New Project
         </button>
       </div>
 
-      {showCreate && (
-        <form onSubmit={handleCreate} className="bg-[#111116] border border-white/[0.08] rounded-2xl p-4 flex flex-col gap-3">
-          <input type="text" value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="Project name..." autoFocus
-            className="w-full bg-[#0d1117] border border-white/[0.08] focus:border-cyan-500/30 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-700 outline-none transition-colors" />
-          <textarea value={createForm.description} onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))}
-            placeholder="Description (optional)" rows={2}
-            className="w-full bg-[#0d1117] border border-white/[0.08] focus:border-cyan-500/30 rounded-xl px-3.5 py-2.5 text-xs text-zinc-300 placeholder-zinc-700 outline-none resize-none transition-colors" />
-          <div className="flex gap-1.5 flex-wrap">
-            {PRESET_COLORS.map(c => (
-              <button key={c} type="button" onClick={() => setCreateForm(f => ({ ...f, color: c }))}
-                className={`w-5 h-5 rounded-full transition-all ${createForm.color === c ? "ring-2 ring-offset-1 ring-offset-[#111116] ring-white/40 scale-110" : ""}`}
-                style={{ backgroundColor: c }} />
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setShowCreate(false)}
-              className="flex-1 py-2 text-xs text-zinc-600 border border-white/[0.07] rounded-xl hover:text-zinc-300 transition-all">Cancel</button>
-            <button type="submit" disabled={creating || !createForm.name.trim()}
-              className="flex-1 py-2 text-xs font-semibold text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 rounded-xl hover:bg-cyan-500/20 transition-all disabled:opacity-40">
-              {creating ? "Creating..." : "Create Project"}
-            </button>
-          </div>
-        </form>
-      )}
+      <CreateProjectModal
+        isOpen={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={p => { onSelect(p.id); onRefresh(); setShowCreate(false); }}
+      />
 
-      {projects.length === 0 && !showCreate ? (
+      {loading && projects.length === 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 content-start">
+          {[80, 60, 90].map((w, i) => (
+            <div key={i} className="rounded-2xl border border-white/[0.07] bg-white/[0.02]" style={{ padding: '1.5rem' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="skeleton w-3 h-3 rounded-full" />
+                <div className="skeleton rounded-lg" style={{ width: `${w}%`, height: '14px' }} />
+              </div>
+              <div className="skeleton rounded-lg mb-4" style={{ width: '60%', height: '11px' }} />
+              <div className="skeleton rounded-full" style={{ width: '100%', height: '4px' }} />
+            </div>
+          ))}
+        </div>
+      ) : projects.length === 0 && !showCreate ? (
         <div className="flex flex-col items-center justify-center flex-1 gap-4 text-center">
           <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-2xl">📁</div>
           <div>
@@ -278,11 +282,11 @@ function ProjectOverview({ projects, onSelect, onRefresh }: {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 content-start overflow-y-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 content-start overflow-y-auto">
           {projects.map(p => (
             <ProjectCard key={p.id} project={p}
               onSelect={() => onSelect(p.id)}
-              onUpdate={handleUpdate}
+              onUpdate={() => handleUpdate()}
               onDelete={handleDelete}
             />
           ))}
@@ -292,14 +296,288 @@ function ProjectOverview({ projects, onSelect, onRefresh }: {
   );
 }
 
+interface ProjectMemberInfo {
+  memberId: string; userId: string; name: string | null; email: string | null; image: string | null;
+}
+
+function MemberAvatar({ m, size = 7 }: { m: { name?: string | null; email?: string | null; image?: string | null }; size?: number }) {
+  const initials = (m.name ?? m.email ?? "?").split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+  const cls = `rounded-full ring-2 ring-[#09090b] flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-white`;
+  return m.image
+    ? <img src={m.image} alt={m.name ?? ""} className={cls} style={{ width: `${size * 4}px`, height: `${size * 4}px`, objectFit: 'cover' }} />
+    : <div className={cls} style={{ width: `${size * 4}px`, height: `${size * 4}px`, background: 'linear-gradient(135deg,rgba(6,182,212,0.5),rgba(139,92,246,0.5))' }}>{initials}</div>;
+}
+
+interface NeonUserSimple { id: string; name: string | null; email: string | null; image: string | null }
+
+function ProjectHeader({ project, taskTotal, done, pct, projectId, onProjectUpdated, onProjectDeleted }: {
+  project: Project; taskTotal: number; done: number; pct: number; projectId: string;
+  onProjectUpdated: (p: Project) => void;
+  onProjectDeleted: () => void;
+}) {
+  const [members, setMembers]       = useState<ProjectMemberInfo[]>([]);
+  const [allUsers, setAllUsers]     = useState<NeonUserSimple[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerPos, setPickerPos]   = useState({ top: 0, right: 0 });
+  const [menuOpen, setMenuOpen]     = useState(false);
+  const [menuPos, setMenuPos]       = useState({ top: 0, right: 0 });
+  const [editOpen, setEditOpen]     = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [saving, setSaving]         = useState(false);
+  const pickerRef                   = useRef<HTMLDivElement>(null);
+  const menuRef                     = useRef<HTMLDivElement>(null);
+  const menuBtnRef                  = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    fetch(`/api/projects/${projectId}/members`)
+      .then(r => r.ok ? r.json() : { members: [] })
+      .then(d => setMembers(d.members ?? []))
+      .catch(() => {});
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!pickerOpen || allUsers.length > 0) return;
+    fetch("/api/users").then(r => r.ok ? r.json() : { users: [] }).then(d => setAllUsers(d.users ?? [])).catch(() => {});
+  }, [pickerOpen, allUsers.length]);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function down(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node) &&
+          menuBtnRef.current && !menuBtnRef.current.contains(e.target as Node))
+        setPickerOpen(false);
+    }
+    document.addEventListener("mousedown", down);
+    return () => document.removeEventListener("mousedown", down);
+  }, [pickerOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function down(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
+          menuBtnRef.current && !menuBtnRef.current.contains(e.target as Node))
+        setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", down);
+    return () => document.removeEventListener("mousedown", down);
+  }, [menuOpen]);
+
+  const memberIds = new Set(members.map(m => m.userId));
+
+  function openMenu() {
+    if (menuBtnRef.current) {
+      const r = menuBtnRef.current.getBoundingClientRect();
+      setMenuPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+    }
+    setMenuOpen(v => !v);
+  }
+
+  function openPicker() {
+    setMenuOpen(false);
+    if (menuBtnRef.current) {
+      const r = menuBtnRef.current.getBoundingClientRect();
+      setPickerPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+    }
+    setPickerOpen(true);
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
+    setMenuOpen(false);
+    await fetch(`/api/projects/${projectId}`, { method: "DELETE" });
+    onProjectDeleted();
+  }
+
+  async function toggleMember(user: NeonUserSimple) {
+    setSaving(true);
+    if (memberIds.has(user.id)) {
+      await fetch(`/api/projects/${projectId}/members`, {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      setMembers(prev => prev.filter(m => m.userId !== user.id));
+    } else {
+      const res = await fetch(`/api/projects/${projectId}/members`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email }),
+      });
+      const data = await res.json();
+      if (res.ok && data.member) {
+        setMembers(prev => [...prev, { memberId: data.member.userId, userId: user.id, name: user.name, email: user.email, image: user.image }]);
+      } else {
+        setEmailError(data.error ?? "Failed to add contributor");
+      }
+    }
+    setSaving(false);
+  }
+
+  async function addByEmail(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setEmailError(""); setSaving(true);
+    const res = await fetch(`/api/projects/${projectId}/members`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: emailInput }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { setEmailError(data.error ?? "User not found — they need to sign in first"); return; }
+    if (data.member) {
+      setMembers(prev => [...prev.filter(m => m.userId !== data.member.userId), {
+        memberId: data.member.userId, userId: data.member.userId,
+        name: data.member.name, email: data.member.email, image: data.member.image,
+      }]);
+      setAllUsers([]);
+    }
+    setEmailInput("");
+  }
+
+  return (
+    <>
+      <div className="flex-shrink-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm" style={{ marginBottom: '1.25rem' }}>
+        <div className="h-1 w-full rounded-t-2xl" style={{ backgroundColor: project.color }} />
+        <div className="flex items-start gap-4 flex-wrap" style={{ padding: '1rem 1.25rem' }}>
+
+          {/* Left: name + description + progress */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: project.color, boxShadow: `0 0 8px ${project.color}80` }} />
+              <h2 className="text-base font-bold text-zinc-100 truncate">{project.name}</h2>
+            </div>
+            {project.description && <p className="text-xs text-zinc-500 mb-2 leading-relaxed">{project.description}</p>}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 max-w-[200px] h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: project.color }} />
+              </div>
+              <span className="text-[11px] text-zinc-500 tabular-nums">{done}/{taskTotal} done · {pct}%</span>
+            </div>
+          </div>
+
+          {/* Right: member avatars + ⋯ menu */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex -space-x-2">
+              {members.slice(0, 5).map(m => (
+                <div key={m.userId} title={m.name ?? m.email ?? m.userId}>
+                  <MemberAvatar m={m} size={7} />
+                </div>
+              ))}
+              {members.length > 5 && (
+                <div className="w-7 h-7 rounded-full bg-white/[0.08] ring-2 ring-[#09090b] flex items-center justify-center text-[10px] text-zinc-400">
+                  +{members.length - 5}
+                </div>
+              )}
+            </div>
+
+            {/* Triple-dot menu button */}
+            <button ref={menuBtnRef} onClick={openMenu}
+              className={`w-7 h-7 flex items-center justify-center rounded-xl border transition-all text-base leading-none ${
+                menuOpen ? "bg-white/[0.08] text-zinc-200 border-white/[0.18]" : "border-white/[0.08] text-zinc-500 hover:text-zinc-200 hover:border-white/[0.18]"
+              }`}>
+              ⋯
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ⋯ dropdown menu — portalled */}
+      {menuOpen && typeof document !== "undefined" && createPortal(
+        <div ref={menuRef}
+          style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999, width: '11rem' }}
+          className="bg-[#111116] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden py-1">
+          <button onClick={() => { setMenuOpen(false); setEditOpen(true); }}
+            className="w-full flex items-center gap-2.5 text-xs text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors text-left"
+            style={{ padding: '0.625rem 1rem' }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M8.5 1.5l2 2-6 6H2.5v-2l6-6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg>
+            Edit Project
+          </button>
+          <button onClick={openPicker}
+            className="w-full flex items-center gap-2.5 text-xs text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors text-left"
+            style={{ padding: '0.625rem 1rem' }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="4.5" r="2" stroke="currentColor" strokeWidth="1.2"/><path d="M2 10c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+            Contributors
+          </button>
+          <div className="h-px bg-white/[0.06] my-1" />
+          <button onClick={handleDelete}
+            className="w-full flex items-center gap-2.5 text-xs text-red-400 hover:bg-red-500/[0.08] transition-colors text-left"
+            style={{ padding: '0.625rem 1rem' }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M5 3V2h2v1M4 3v6.5a.5.5 0 00.5.5h3a.5.5 0 00.5-.5V3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Delete Project
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Contributors picker — portalled */}
+      {pickerOpen && typeof document !== "undefined" && createPortal(
+        <div ref={pickerRef}
+          style={{ position: 'fixed', top: pickerPos.top, right: pickerPos.right, zIndex: 9999, width: '18rem' }}
+          className="bg-[#111116] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden">
+          <div className="border-b border-white/[0.06]" style={{ padding: '0.75rem 1rem' }}>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-zinc-300">Project Contributors</p>
+              <button onClick={() => setPickerOpen(false)} className="text-zinc-600 hover:text-zinc-300 text-sm leading-none">×</button>
+            </div>
+            <p className="text-[10px] text-zinc-600 mt-0.5">Click to add or remove</p>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {allUsers.length === 0 ? (
+              <div className="flex justify-center py-4">
+                <div className="w-4 h-4 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
+              </div>
+            ) : allUsers.map(u => {
+              const isMember = memberIds.has(u.id);
+              return (
+                <button key={u.id} onClick={() => toggleMember(u)} disabled={saving}
+                  className={`w-full flex items-center gap-3 transition-colors text-left ${
+                    isMember ? "bg-cyan-500/[0.08] hover:bg-cyan-500/[0.12]" : "hover:bg-white/[0.04]"
+                  }`} style={{ padding: '0.625rem 1rem' }}>
+                  <MemberAvatar m={u} size={6} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-zinc-200 truncate">{u.name ?? u.email}</p>
+                    {u.name && <p className="text-[10px] text-zinc-600 truncate">{u.email}</p>}
+                  </div>
+                  {isMember && <span className="text-[10px] text-cyan-400 flex-shrink-0">✓</span>}
+                </button>
+              );
+            })}
+          </div>
+          <div className="border-t border-white/[0.06]" style={{ padding: '0.75rem 1rem' }}>
+            <form onSubmit={addByEmail} className="flex gap-2">
+              <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)}
+                placeholder="Add by email..." required
+                className="flex-1 bg-[#09090b] border border-white/[0.08] focus:border-cyan-500/40 rounded-lg text-xs text-zinc-200 placeholder-zinc-700 outline-none"
+                style={{ padding: '0.375rem 0.5rem' }} />
+              <button type="submit" disabled={saving}
+                className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition-all disabled:opacity-40">
+                Add
+              </button>
+            </form>
+            {emailError && <p className="text-[10px] text-red-400 mt-1">{emailError}</p>}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Edit project modal */}
+      <EditProjectModal
+        isOpen={editOpen}
+        onClose={() => setEditOpen(false)}
+        project={project}
+        onUpdated={p => { onProjectUpdated(p); setEditOpen(false); }}
+      />
+    </>
+  );
+}
+
 interface KanbanBoardProps {
   projects: Project[];
   activeProjectId: string | null;
   onSelectProject: (id: string) => void;
   onRefreshProjects: () => void;
+  projectsLoading?: boolean;
 }
 
-export default function KanbanBoard({ projects, activeProjectId, onSelectProject, onRefreshProjects }: KanbanBoardProps) {
+export default function KanbanBoard({ projects, activeProjectId, onSelectProject, onRefreshProjects, projectsLoading }: KanbanBoardProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -354,12 +632,24 @@ export default function KanbanBoard({ projects, activeProjectId, onSelectProject
   }, [tasks]);
 
   if (!activeProjectId) {
-    return <ProjectOverview projects={projects} onSelect={onSelectProject} onRefresh={onRefreshProjects} />;
+    return <ProjectOverview projects={projects} onSelect={onSelectProject} onRefresh={onRefreshProjects} loading={projectsLoading} />;
   }
+
+  const activeProject = projects.find(p => p.id === activeProjectId);
+  const done = tasks.filter(t => t.status === "DONE").length;
+  const pct  = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0;
 
   return (
     <>
-      <div className="flex gap-3 md:gap-4 h-full min-h-0 overflow-x-auto md:overflow-x-hidden snap-x snap-mandatory md:snap-none pb-2 md:pb-0">
+      {/* Project header banner */}
+      {activeProject && (
+        <ProjectHeader
+          project={activeProject} taskTotal={tasks.length} done={done} pct={pct} projectId={activeProjectId}
+          onProjectUpdated={p => onRefreshProjects()}
+          onProjectDeleted={() => { onSelectProject(""); onRefreshProjects(); }}
+        />
+      )}
+      <div className="flex flex-1 min-h-0 overflow-x-auto md:overflow-x-hidden snap-x snap-mandatory md:snap-none pb-2 md:pb-0" style={{ gap: '1.25rem' }}>
         {COLUMNS.map(col => {
           const colTasks = tasksByStatus[col.id];
           const isOver = dragOverCol === col.id && !!draggingId && tasks.find(t => t.id === draggingId)?.status !== col.id;
@@ -372,24 +662,33 @@ export default function KanbanBoard({ projects, activeProjectId, onSelectProject
               onDrop={e => handleDrop(e, col.id)}
             >
               {/* Column header */}
-              <div className="flex items-center gap-2 mb-3 px-1">
+              <div className="flex items-center gap-2 mb-4 px-2">
                 <div className={`w-2 h-2 rounded-full ${col.dot} ${col.id === "IN_PROGRESS" ? "animate-pulse" : ""}`} />
                 <span className={`text-xs font-bold uppercase tracking-wider ${col.color}`}>{col.label}</span>
                 <span className={`ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full ${col.countColor}`}>{colTasks.length}</span>
               </div>
 
-              <div className={`flex flex-col gap-2.5 flex-1 overflow-y-auto rounded-2xl p-1.5 transition-all duration-200 ${
+              <div className={`flex flex-col gap-3 flex-1 overflow-y-auto rounded-2xl p-3 transition-all duration-200 ${
                 isOver ? `border-2 border-dashed ${col.accent} bg-white/[0.02]` : "border-2 border-transparent"
               }`}>
                 {loading ? (
-                  <div className="flex justify-center pt-8">
-                    <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white/60 animate-spin" />
+                  <div className="flex flex-col gap-3 pt-1">
+                    {[70, 45, 85].map((w, i) => (
+                      <div key={i} className="rounded-2xl border border-white/[0.06] bg-white/[0.02]" style={{ padding: '0.875rem 1rem' }}>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="skeleton rounded-full" style={{ width: `${w * 0.6}px`, height: '18px' }} />
+                        </div>
+                        <div className="skeleton rounded-lg mb-2" style={{ width: `${w}%`, height: '14px' }} />
+                        <div className="skeleton rounded-lg" style={{ width: `${w * 0.7}%`, height: '11px' }} />
+                      </div>
+                    ))}
                   </div>
                 ) : colTasks.length === 0 ? (
-                  <div className={`flex items-center justify-center h-20 rounded-xl border-2 border-dashed transition-all ${
-                    isOver ? "border-white/20" : "border-white/[0.04] opacity-50"
+                  <div className={`flex flex-col items-center justify-center gap-1.5 h-24 rounded-xl border-2 border-dashed transition-all ${
+                    isOver ? "border-white/20 bg-white/[0.02]" : "border-white/[0.04] opacity-40"
                   }`}>
-                    <p className="text-[11px] text-zinc-700">{isOver ? "Drop here" : "No tasks"}</p>
+                    <p className="text-[11px] text-zinc-700">{isOver ? "Drop here" : "Empty"}</p>
+                    {!isOver && <p className="text-[10px] text-zinc-800">+ Add task below</p>}
                   </div>
                 ) : (
                   colTasks.map(task => (
@@ -405,7 +704,7 @@ export default function KanbanBoard({ projects, activeProjectId, onSelectProject
                 {/* Add task button → opens full modal */}
                 <button
                   onClick={() => setCreateModal({ open: true, status: col.id })}
-                  className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-zinc-700 hover:text-zinc-400 hover:bg-white/[0.03] transition-all text-sm"
+                  className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-zinc-700 hover:text-zinc-400 hover:bg-white/[0.03] transition-all text-sm"
                 >
                   <span className="text-base leading-none">+</span> Add task
                 </button>

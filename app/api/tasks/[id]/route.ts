@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthorizedUser } from "@/lib/getUser";
 import { db } from "@/lib/db";
+import { enrichOneTask } from "@/lib/enrichAssignees";
+import { requireEditor } from "@/lib/getUser";
 
 const TASK_INCLUDE = {
   project: true,
@@ -15,11 +17,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const task = await db.task.findUnique({ where: { id, userId: auth.userId }, include: TASK_INCLUDE });
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ task });
+  return NextResponse.json({ task: await enrichOneTask(task) });
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await getAuthorizedUser();
+  const auth = await requireEditor();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
   const { id } = await params;
@@ -40,11 +42,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     include: TASK_INCLUDE,
   });
 
+  // No enrichment on PATCH — assignees unchanged, saves one DB round-trip.
+  // Client merges real timestamps with its own assignee state.
   return NextResponse.json({ task });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await getAuthorizedUser();
+  const auth = await requireEditor();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
   const { id } = await params;

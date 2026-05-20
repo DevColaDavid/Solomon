@@ -15,14 +15,14 @@ export default function WeatherWidget() {
   }, []);
 
   if (loading) return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111116] p-4 h-32 flex items-center justify-center">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111116] h-32 flex items-center justify-center" style={{ padding: '1rem' }}>
       <div className="w-4 h-4 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
     </div>
   );
   if (!weather) return null;
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111116] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111116]" style={{ padding: '1rem' }}>
       {/* Label */}
       <p className="text-[9px] font-semibold tracking-[0.15em] text-zinc-600 uppercase mb-3">Weather</p>
 

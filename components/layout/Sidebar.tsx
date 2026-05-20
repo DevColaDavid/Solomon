@@ -24,7 +24,7 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
   const [form, setForm] = useState({ name: "", color: "#8b5cf6", description: "" });
   const [submitting, setSubmitting] = useState(false);
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!form.name.trim()) return;
     setSubmitting(true);
@@ -47,7 +47,7 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
   }
 
   return (
-    <aside className="w-56 flex-shrink-0 flex flex-col bg-[#09090b] border-r border-white/[0.06] h-screen sticky top-0 z-20 relative">
+    <aside className="w-64 flex-shrink-0 flex flex-col bg-black/40 backdrop-blur-md border-r border-white/[0.07] h-screen sticky top-0 z-20 relative">
       {onClose && (
         <button onClick={onClose} className="absolute top-4 right-3 w-6 h-6 flex items-center justify-center rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] transition-all text-base leading-none z-10">×</button>
       )}
@@ -65,10 +65,10 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
       </div>
 
       {/* Nav */}
-      <div className="px-3 pb-2 flex flex-col gap-0.5">
+      <div className="px-3 pb-2 flex flex-col gap-1">
         <button
           onClick={() => onSelectProject(null)}
-          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all ${
+          className={`w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm transition-all ${
             activeProject === null
               ? "bg-white/[0.07] text-zinc-100 font-medium"
               : "text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]"
@@ -84,7 +84,7 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
         </button>
         <button
           onClick={() => router.push("/analytics")}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]"
+          className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm transition-all text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="flex-shrink-0">
             <polyline points="1,11 4,7 7,9 10,4 13,5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.7"/>
@@ -98,7 +98,7 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
       <div className="mx-4 border-t border-white/[0.05]" />
 
       {/* Projects */}
-      <div className="flex-1 overflow-y-auto px-3 py-3">
+      <div className="flex-1 overflow-y-auto px-3 py-4">
         <div className="flex items-center justify-between px-2 mb-2">
           <span className="text-[9px] font-semibold tracking-[0.15em] text-zinc-600 uppercase">Projects</span>
           <button
@@ -134,7 +134,7 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
           </form>
         )}
 
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-1">
           {projects.length === 0 && !showForm && (
             <p className="text-[11px] text-zinc-700 px-3 py-3 text-center">No projects yet.<br />
               <button onClick={() => setShowForm(true)} className="text-zinc-500 hover:text-zinc-300 transition-colors mt-1">Create one →</button>
@@ -143,7 +143,7 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
           {projects.map((p) => (
             <div key={p.id}
               onClick={() => onSelectProject(activeProject === p.id ? null : p.id)}
-              className={`group flex items-center gap-2.5 px-3 py-2 rounded-xl cursor-pointer transition-all ${
+              className={`group flex items-center gap-2.5 px-4 py-2.5 rounded-xl cursor-pointer transition-all ${
                 activeProject === p.id ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"
               }`}>
               <div className="w-2 h-2 rounded-full flex-shrink-0 transition-all"
@@ -164,10 +164,10 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
       </div>
 
       {/* Footer */}
-      <div className="px-3 py-4 border-t border-white/[0.05] flex flex-col gap-1">
+      <div className="px-3 py-5 border-t border-white/[0.05] flex flex-col gap-1.5">
         {isAdmin && (
           <button onClick={() => router.push("/admin")}
-            className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.04] transition-all text-xs">
+            className="flex items-center gap-2 w-full px-4 py-2.5 rounded-xl text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.04] transition-all text-xs">
             <span>⚙</span> Admin Panel
           </button>
         )}

@@ -26,3 +26,16 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ sprint });
 }
+
+export async function DELETE(req: Request) {
+  const auth = await getAuthorizedUser();
+  if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
+  if (!auth.isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const { ids } = await req.json() as { ids: string[] };
+  if (!Array.isArray(ids) || ids.length === 0)
+    return NextResponse.json({ error: "No IDs provided" }, { status: 400 });
+
+  await db.sprintSession.deleteMany({ where: { id: { in: ids } } });
+  return NextResponse.json({ deleted: ids.length });
+}

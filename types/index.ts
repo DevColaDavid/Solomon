@@ -12,7 +12,7 @@ export interface CalendarEvent {
 }
 
 export interface Subtask {
-  id: string; title: string; completed: boolean; taskId: string; createdAt: string;
+  id: string; title: string; description?: string | null; completed: boolean; taskId: string; createdAt: string;
 }
 export interface TaskAssignee {
   id: string; taskId: string; userId: string;

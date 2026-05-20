@@ -49,7 +49,8 @@ function CollapseButton({ collapsed, onClick, side }: { collapsed: boolean; onCl
 export default function DashboardPage() {
   const { data: session, isPending } = authClient.useSession();
   const router = useRouter();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects]         = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [activeProject, setActiveProject] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
@@ -86,7 +87,7 @@ export default function DashboardPage() {
   // This eliminates the session → data waterfall.
   useEffect(() => {
     Promise.all([
-      fetch("/api/projects").then(r => r.ok ? r.json() : { projects: [] }).then(d => setProjects(d.projects ?? [])),
+      fetch("/api/projects").then(r => r.ok ? r.json() : { projects: [] }).then(d => { setProjects(d.projects ?? []); setProjectsLoading(false); }),
       fetch("/api/auth/me").then(r => r.ok ? r.json() : { isAdmin: false }).then(d => setIsAdmin(d.isAdmin ?? false)),
     ]).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -104,7 +105,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#09090b] relative z-10">
+    <div className="flex h-screen overflow-hidden bg-[#09090b] relative z-10" style={{ gap: 0 }}>
 
       {/* Desktop left sidebar */}
       {leftOpen && (
@@ -140,7 +141,7 @@ export default function DashboardPage() {
       {mobileRightOpen && (
         <div className="fixed inset-0 z-50 md:hidden" onClick={() => setMobileRightOpen(false)}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div onClick={e => e.stopPropagation()} className="absolute right-0 top-0 h-full w-[300px] bg-[#09090b] border-l border-white/[0.06] flex flex-col gap-3 p-4 overflow-y-auto">
+          <div onClick={e => e.stopPropagation()} className="absolute right-0 top-0 h-full w-[300px] bg-[#09090b] border-l border-white/[0.06] flex flex-col overflow-y-auto" style={{ gap: '1rem', padding: '1.25rem' }}>
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] font-semibold tracking-widest text-zinc-600 uppercase">Widgets</span>
               <button onClick={() => setMobileRightOpen(false)} className="w-6 h-6 flex items-center justify-center rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] transition-all text-base">×</button>
@@ -156,7 +157,7 @@ export default function DashboardPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Header */}
-        <header className="flex items-center gap-2 px-4 py-3.5 border-b border-white/[0.05] flex-shrink-0 bg-[#09090b]/90 backdrop-blur-sm">
+        <header className="flex items-center gap-3 px-5 py-4 border-b border-white/[0.06] flex-shrink-0 bg-black/60 backdrop-blur-md">
           {/* Mobile hamburger */}
           <button
             onClick={() => setMobileMenuOpen(true)}
@@ -232,18 +233,19 @@ export default function DashboardPage() {
 
         {/* Content */}
         <div className="flex-1 flex overflow-hidden min-h-0">
-          <div className="flex-1 overflow-hidden p-3 md:p-5 flex flex-col min-w-0 min-h-0">
+          <div className="flex-1 overflow-hidden flex flex-col min-w-0 min-h-0" style={{ padding: '1.5rem 1.75rem' }}>
             <KanbanBoard
               projects={projects}
               activeProjectId={activeProject}
               onSelectProject={setActiveProject}
               onRefreshProjects={loadProjects}
+              projectsLoading={projectsLoading}
             />
           </div>
 
           {/* Right panel - hidden on mobile */}
           {rightOpen && (
-            <aside className="hidden md:flex w-[300px] flex-shrink-0 flex-col gap-3 p-4 overflow-y-auto border-l border-white/[0.05]">
+            <aside className="hidden md:flex w-[300px] flex-shrink-0 flex-col overflow-y-auto border-l border-white/[0.05]" style={{ gap: '1rem', padding: '1.25rem' }}>
               <WeatherWidget />
               <CalendarWidget />
               <ChronoMatrix projects={projects} />

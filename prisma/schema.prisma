@@ -7,8 +7,15 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Neon Auth (Better Auth) manages users in the neon_auth schema.
-// We reference userId (string) from Neon Auth directly in our models.
+// ─────────────────────────────────────────────────────────────────
+//  ENUMS
+// ─────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  VIEWER   // read-only
+  MEMBER   // full task/project access
+  ADMIN    // full access + user management
+}
 
 enum Priority {
   CRITICAL
@@ -30,26 +37,64 @@ enum SprintMode {
   LONG_BREAK
 }
 
-model WhitelistEntry {
+// ─────────────────────────────────────────────────────────────────
+//  ACCESS MANAGEMENT
+//  Controls who can sign in and what they can do.
+//  Identity (email/password/OAuth) is managed by Neon Auth
+//  in the separate `neon_auth` schema.
+// ─────────────────────────────────────────────────────────────────
+
+model AppUser {
   id        String   @id @default(cuid())
   email     String   @unique
-  isAdmin   Boolean  @default(false)
+  role      UserRole @default(MEMBER)
   note      String?
   createdAt DateTime @default(now())
+
+  @@map("users")
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  PROJECTS  (top-level workspace containers)
+//  Project
+//  └── ProjectMember  (who has access to this project)
+//  └── Task[]         (see Tasks section)
+// ─────────────────────────────────────────────────────────────────
 
 model Project {
   id          String          @id @default(cuid())
   name        String
   color       String          @default("#06b6d4")
   description String?
-  userId      String
+  userId      String                        // owner (neon_auth user id)
+  members     ProjectMember[]
   tasks       Task[]
   sprints     SprintSession[]
   createdAt   DateTime        @default(now())
 
   @@index([userId])
+  @@map("projects")
 }
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String                          // neon_auth user id
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  TASKS  (children of a Project)
+//  Task
+//  ├── TaskAssignee[]  (contributors on this task)
+//  └── Subtask[]       (breakdown items)
+// ─────────────────────────────────────────────────────────────────
 
 model Task {
   id          String         @id @default(cuid())
@@ -61,7 +106,7 @@ model Task {
   dueDate     DateTime?
   projectId   String
   project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  userId      String
+  userId      String                        // owner (neon_auth user id)
   assignees   TaskAssignee[]
   subtasks    Subtask[]
   createdAt   DateTime       @default(now())
@@ -71,41 +116,50 @@ model Task {
   @@index([projectId])
   @@index([userId, projectId])
   @@index([userId, status])
+  @@map("tasks")
 }
 
 model TaskAssignee {
   id     String @id @default(cuid())
   taskId String
-  userId String
+  userId String                            // neon_auth user id
   task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@unique([taskId, userId])
   @@index([userId])
+  @@map("task_assignees")
 }
 
 model Subtask {
-  id        String   @id @default(cuid())
-  title     String
-  completed Boolean  @default(false)
-  taskId    String
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  completed   Boolean  @default(false)
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
 
   @@index([taskId])
+  @@map("subtasks")
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  TRACKING  (Pomodoro / focus session logs)
+// ─────────────────────────────────────────────────────────────────
 
 model SprintSession {
   id        String     @id @default(cuid())
   taskName  String?
-  duration  Int
+  duration  Int                            // minutes
   mode      SprintMode @default(FOCUS)
   completed Boolean    @default(true)
   projectId String?
   project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  userId    String
+  userId    String                         // neon_auth user id
   createdAt DateTime   @default(now())
 
   @@index([userId])
   @@index([userId, createdAt])
   @@index([projectId])
+  @@map("sprint_sessions")
 }

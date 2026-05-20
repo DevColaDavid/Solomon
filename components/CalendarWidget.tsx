@@ -60,7 +60,7 @@ export default function CalendarWidget() {
   });
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#0d1424] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#0d1424]" style={{ padding: '1rem' }}>
       <div className="flex items-center justify-between mb-3">
         <div>
           <p className="text-[10px] font-semibold tracking-widest text-[#475569] uppercase">Calendar</p>
