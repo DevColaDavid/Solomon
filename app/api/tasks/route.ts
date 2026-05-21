@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAuthorizedUser } from "@/lib/getUser";
+import { getProjectRole, projectAccessWhere } from "@/lib/projectAccess";
 import { db } from "@/lib/db";
 import { Priority, TaskStatus } from "@prisma/client";
 import { enrichAssignees, enrichOneTask } from "@/lib/enrichAssignees";
-import { requireEditor } from "@/lib/getUser";
 
 const TASK_INCLUDE = {
   project: true,
@@ -19,10 +19,17 @@ export async function GET(req: Request) {
   const projectId = searchParams.get("projectId");
   const status = searchParams.get("status");
 
+  // If specific project requested, verify access first
+  if (projectId) {
+    const role = await getProjectRole(projectId, auth);
+    if (!role) return NextResponse.json({ tasks: [] });
+  }
+
   const tasks = await db.task.findMany({
     where: {
-      userId: auth.userId,
-      ...(projectId ? { projectId } : {}),
+      ...(projectId
+        ? { projectId }
+        : { project: projectAccessWhere(auth) }),
       ...(status ? { status: status as TaskStatus } : {}),
     },
     include: TASK_INCLUDE,
@@ -33,14 +40,15 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireEditor();
+  const auth = await getAuthorizedUser();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
   const { title, description, projectId, priority, dueDate, startDate, status } = await req.json();
+  if (!projectId) return NextResponse.json({ error: "projectId is required" }, { status: 400 });
 
-  if (!projectId) {
-    return NextResponse.json({ error: "projectId is required" }, { status: 400 });
-  }
+  const role = await getProjectRole(projectId, auth);
+  if (!role) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  if (role === "VIEWER") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const task = await db.task.create({
     data: {

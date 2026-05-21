@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"userId: auth.userId\\\\|where: { id, userId\" \"c:\\\\Users\\\\david\\\\dev\\\\solomon\\\\app\\\\api\\\\projects\\\\route.ts\" \"c:\\\\Users\\\\david\\\\dev\\\\solomon\\\\app\\\\api\\\\projects\\\\[id]\\\\route.ts\" \"c:\\\\Users\\\\david\\\\dev\\\\solomon\\\\app\\\\api\\\\tasks\\\\route.ts\" \"c:\\\\Users\\\\david\\\\dev\\\\solomon\\\\app\\\\api\\\\tasks\\\\[id]\\\\route.ts\")",
+      "Bash(npx prisma *)"
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthorizedUser } from "@/lib/getUser";
+import { projectAccessWhere } from "@/lib/projectAccess";
 import { db } from "@/lib/db";
 
 export async function GET() {
@@ -7,7 +8,7 @@ export async function GET() {
   if (!auth.ok) return NextResponse.json({ projects: [] }, { status: auth.status });
 
   const projects = await db.project.findMany({
-    where: { userId: auth.userId },
+    where: projectAccessWhere(auth),
     include: { tasks: { where: { status: { not: "DONE" } } } },
     orderBy: { createdAt: "desc" },
   });

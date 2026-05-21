@@ -298,6 +298,7 @@ function ProjectOverview({ projects, onSelect, onRefresh, loading }: {
 
 interface ProjectMemberInfo {
   memberId: string; userId: string; name: string | null; email: string | null; image: string | null;
+  role?: string;
 }
 
 function MemberAvatar({ m, size = 7 }: { m: { name?: string | null; email?: string | null; image?: string | null }; size?: number }) {
@@ -316,6 +317,7 @@ function ProjectHeader({ project, taskTotal, done, pct, projectId, onProjectUpda
   onProjectDeleted: () => void;
 }) {
   const [members, setMembers]       = useState<ProjectMemberInfo[]>([]);
+  const [myRole, setMyRole]         = useState<string | null>(null);
   const [allUsers, setAllUsers]     = useState<NeonUserSimple[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPos, setPickerPos]   = useState({ top: 0, right: 0 });
@@ -329,10 +331,12 @@ function ProjectHeader({ project, taskTotal, done, pct, projectId, onProjectUpda
   const menuRef                     = useRef<HTMLDivElement>(null);
   const menuBtnRef                  = useRef<HTMLButtonElement>(null);
 
+  const isOwner = myRole === "OWNER";
+
   useEffect(() => {
     fetch(`/api/projects/${projectId}/members`)
-      .then(r => r.ok ? r.json() : { members: [] })
-      .then(d => setMembers(d.members ?? []))
+      .then(r => r.ok ? r.json() : { members: [], myRole: null })
+      .then(d => { setMembers(d.members ?? []); setMyRole(d.myRole ?? null); })
       .catch(() => {});
   }, [projectId]);
 
@@ -514,35 +518,77 @@ function ProjectHeader({ project, taskTotal, done, pct, projectId, onProjectUpda
           className="bg-[#111116] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden">
           <div className="border-b border-white/[0.06]" style={{ padding: '0.75rem 1rem' }}>
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-zinc-300">Project Contributors</p>
+              <p className="text-xs font-semibold text-zinc-300">Contributors</p>
               <button onClick={() => setPickerOpen(false)} className="text-zinc-600 hover:text-zinc-300 text-sm leading-none">×</button>
             </div>
-            <p className="text-[10px] text-zinc-600 mt-0.5">Click to add or remove</p>
+            <p className="text-[10px] text-zinc-600 mt-0.5">
+              {isOwner ? "Click to add/remove · set roles" : "View only — contact owner to change"}
+            </p>
           </div>
-          <div className="max-h-48 overflow-y-auto">
-            {allUsers.length === 0 ? (
-              <div className="flex justify-center py-4">
-                <div className="w-4 h-4 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
-              </div>
-            ) : allUsers.map(u => {
-              const isMember = memberIds.has(u.id);
-              return (
-                <button key={u.id} onClick={() => toggleMember(u)} disabled={saving}
-                  className={`w-full flex items-center gap-3 transition-colors text-left ${
-                    isMember ? "bg-cyan-500/[0.08] hover:bg-cyan-500/[0.12]" : "hover:bg-white/[0.04]"
-                  }`} style={{ padding: '0.625rem 1rem' }}>
-                  <MemberAvatar m={u} size={6} />
+
+          {/* Current members with roles */}
+          {members.length > 0 && (
+            <div className="border-b border-white/[0.06]">
+              {members.map(m => (
+                <div key={m.userId} className="flex items-center gap-2.5" style={{ padding: '0.5rem 1rem' }}>
+                  <MemberAvatar m={m} size={5} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-zinc-200 truncate">{u.name ?? u.email}</p>
-                    {u.name && <p className="text-[10px] text-zinc-600 truncate">{u.email}</p>}
+                    <p className="text-xs text-zinc-300 truncate">{m.name ?? m.email}</p>
                   </div>
-                  {isMember && <span className="text-[10px] text-cyan-400 flex-shrink-0">✓</span>}
+                  {isOwner ? (
+                    <div className="flex items-center gap-1.5">
+                      <select value={m.role ?? "EDITOR"} disabled={saving}
+                        onChange={async e => {
+                          setSaving(true);
+                          await fetch(`/api/projects/${projectId}/members`, {
+                            method: "PATCH", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ userId: m.userId, role: e.target.value }),
+                          });
+                          setMembers(prev => prev.map(x => x.userId === m.userId ? { ...x, role: e.target.value } : x));
+                          setSaving(false);
+                        }}
+                        className="text-[9px] font-semibold bg-white/[0.04] border border-white/[0.08] rounded-lg text-zinc-400 outline-none cursor-pointer"
+                        style={{ padding: '0.2rem 0.4rem' }}>
+                        <option value="EDITOR">Editor</option>
+                        <option value="VIEWER">Viewer</option>
+                      </select>
+                      <button onClick={() => toggleMember({ id: m.userId, name: m.name, email: m.email, image: m.image })} disabled={saving}
+                        className="text-zinc-700 hover:text-red-400 transition-colors text-xs leading-none">×</button>
+                    </div>
+                  ) : (
+                    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
+                      m.role === "OWNER" ? "text-amber-400 border-amber-500/30 bg-amber-500/10" :
+                      m.role === "VIEWER" ? "text-zinc-500 border-zinc-600/30 bg-zinc-500/10" :
+                      "text-cyan-400 border-cyan-500/30 bg-cyan-500/10"
+                    }`}>{m.role ?? "EDITOR"}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add new — owner only */}
+          {isOwner && (
+            <div className="max-h-36 overflow-y-auto">
+              {allUsers.filter(u => !memberIds.has(u.id)).map(u => (
+                <button key={u.id} onClick={() => toggleMember(u)} disabled={saving}
+                  className="w-full flex items-center gap-3 hover:bg-white/[0.04] transition-colors text-left"
+                  style={{ padding: '0.5rem 1rem' }}>
+                  <MemberAvatar m={u} size={5} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-zinc-400 truncate">{u.name ?? u.email}</p>
+                  </div>
+                  <span className="text-[10px] text-zinc-600">+ Add</span>
                 </button>
-              );
-            })}
-          </div>
+              ))}
+              {allUsers.filter(u => !memberIds.has(u.id)).length === 0 && allUsers.length > 0 && (
+                <p className="text-[10px] text-zinc-700 text-center py-2">All users added</p>
+              )}
+            </div>
+          )}
+
           <div className="border-t border-white/[0.06]" style={{ padding: '0.75rem 1rem' }}>
-            <form onSubmit={addByEmail} className="flex gap-2">
+            {isOwner && <form onSubmit={addByEmail} className="flex gap-2">
               <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)}
                 placeholder="Add by email..." required
                 className="flex-1 bg-[#09090b] border border-white/[0.08] focus:border-cyan-500/40 rounded-lg text-xs text-zinc-200 placeholder-zinc-700 outline-none"
@@ -551,7 +597,7 @@ function ProjectHeader({ project, taskTotal, done, pct, projectId, onProjectUpda
                 className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition-all disabled:opacity-40">
                 Add
               </button>
-            </form>
+            </form>}
             {emailError && <p className="text-[10px] text-red-400 mt-1">{emailError}</p>}
           </div>
         </div>,

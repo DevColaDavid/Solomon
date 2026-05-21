@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthorizedUser } from "@/lib/getUser";
+import { getProjectRole } from "@/lib/projectAccess";
 import { db } from "@/lib/db";
 import { enrichOneTask } from "@/lib/enrichAssignees";
-import { requireEditor } from "@/lib/getUser";
 
 const TASK_INCLUDE = {
   project: true,
@@ -10,48 +10,62 @@ const TASK_INCLUDE = {
   assignees: true,
 };
 
+async function resolveTaskAccess(id: string, auth: { userId: string; isAdmin: boolean }) {
+  const task = await db.task.findUnique({ where: { id }, select: { projectId: true } });
+  if (!task) return { task: null, role: null };
+  const role = await getProjectRole(task.projectId, auth);
+  return { task, role };
+}
+
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await getAuthorizedUser();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
   const { id } = await params;
-  const task = await db.task.findUnique({ where: { id, userId: auth.userId }, include: TASK_INCLUDE });
+  const { role } = await resolveTaskAccess(id, auth);
+  if (!role) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const task = await db.task.findUnique({ where: { id }, include: TASK_INCLUDE });
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ task: await enrichOneTask(task) });
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireEditor();
+  const auth = await getAuthorizedUser();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
   const { id } = await params;
-  const body = await req.json();
+  const { role } = await resolveTaskAccess(id, auth);
+  if (!role) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (role === "VIEWER") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+  const body = await req.json();
   const task = await db.task.update({
-    where: { id, userId: auth.userId },
+    where: { id },
     data: {
-      ...(body.title !== undefined     && { title: body.title }),
+      ...(body.title !== undefined       && { title: body.title }),
       ...(body.description !== undefined && { description: body.description }),
-      ...(body.status !== undefined    && { status: body.status }),
-      ...(body.priority !== undefined  && { priority: body.priority }),
-      // projectId cannot be unset — tasks must belong to a project
-      ...(body.projectId && { projectId: body.projectId }),
-      ...(body.startDate !== undefined && { startDate: body.startDate ? new Date(body.startDate) : null }),
-      ...(body.dueDate !== undefined   && { dueDate: body.dueDate ? new Date(body.dueDate) : null }),
+      ...(body.status !== undefined      && { status: body.status }),
+      ...(body.priority !== undefined    && { priority: body.priority }),
+      ...(body.projectId                 && { projectId: body.projectId }),
+      ...(body.startDate !== undefined   && { startDate: body.startDate ? new Date(body.startDate) : null }),
+      ...(body.dueDate !== undefined     && { dueDate: body.dueDate ? new Date(body.dueDate) : null }),
     },
     include: TASK_INCLUDE,
   });
 
-  // No enrichment on PATCH — assignees unchanged, saves one DB round-trip.
-  // Client merges real timestamps with its own assignee state.
   return NextResponse.json({ task });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireEditor();
+  const auth = await getAuthorizedUser();
   if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: auth.status });
 
   const { id } = await params;
-  await db.task.delete({ where: { id, userId: auth.userId } });
+  const { role } = await resolveTaskAccess(id, auth);
+  if (!role) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (role === "VIEWER") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  await db.task.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

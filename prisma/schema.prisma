@@ -37,6 +37,12 @@ enum SprintMode {
   LONG_BREAK
 }
 
+enum ProjectRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
 // ─────────────────────────────────────────────────────────────────
 //  ACCESS MANAGEMENT
 //  Controls who can sign in and what they can do.
@@ -77,11 +83,12 @@ model Project {
 }
 
 model ProjectMember {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   projectId String
-  userId    String                          // neon_auth user id
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  userId    String                              // neon_auth user id
+  role      ProjectRole @default(EDITOR)
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
 
   @@unique([projectId, userId])
   @@index([projectId])

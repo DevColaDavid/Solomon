@@ -80,7 +80,7 @@ export default function Sidebar({ projects, onRefresh, activeProject, onSelectPr
             <rect x="1" y="8" width="5" height="5" rx="1.5" fill="currentColor" opacity="0.4"/>
             <rect x="8" y="8" width="5" height="5" rx="1.5" fill="currentColor" opacity="0.7"/>
           </svg>
-          All Tasks
+          All Projects
         </button>
         <button
           onClick={() => router.push("/analytics")}
