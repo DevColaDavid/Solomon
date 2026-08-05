@@ -19,11 +19,47 @@ export default function ProfileModal({ isOpen, onClose }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
+  type ApiKey = { id: string; name: string; keyPrefix: string; revokedAt: string | null; lastUsedAt: string | null; createdAt: string };
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [mintedKey, setMintedKey] = useState<string | null>(null);
+
+  async function loadKeys() {
+    const res = await fetch("/api/keys");
+    const data = await res.json();
+    setApiKeys(data.keys ?? []);
+  }
+
+  async function handleCreateKey() {
+    if (!newKeyName.trim()) return;
+    setCreatingKey(true);
+    const res = await fetch("/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newKeyName.trim() }),
+    });
+    const data = await res.json();
+    setCreatingKey(false);
+    if (data.key) {
+      setMintedKey(data.key);
+      setNewKeyName("");
+      loadKeys();
+    }
+  }
+
+  async function handleRevokeKey(id: string) {
+    await fetch(`/api/keys/${id}`, { method: "DELETE" });
+    loadKeys();
+  }
+
   useEffect(() => {
     if (isOpen && session?.user) {
       setName(session.user.name ?? "");
       setImage(session.user.image ?? "");
       setSaved(false);
+      setMintedKey(null);
+      loadKeys();
     }
   }, [isOpen, session]);
 
@@ -63,9 +99,9 @@ export default function ProfileModal({ isOpen, onClose }: Props) {
       onClick={e => { if (e.target === overlayRef.current) onClose(); }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
     >
-      <div className="w-full max-w-md bg-black/70 backdrop-blur-xl border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-md max-h-[85vh] overflow-y-auto bg-black/70 backdrop-blur-xl border border-white/[0.1] rounded-2xl shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-white/[0.06] bg-black/70 backdrop-blur-xl">
           <h2 className="text-sm font-semibold text-zinc-100">Profile</h2>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-600 hover:text-zinc-200 hover:bg-white/[0.06] transition-all text-lg">×</button>
         </div>
@@ -114,6 +150,56 @@ export default function ProfileModal({ isOpen, onClose }: Props) {
             <label className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider block mb-1.5">Email</label>
             <div className="w-full bg-white/[0.02] border border-white/[0.05] rounded-xl px-3.5 py-2.5 text-sm text-zinc-600 select-all">
               {user.email}
+            </div>
+          </div>
+
+          {/* API keys — for connecting outside applications to this app's API */}
+          <div className="pt-1 border-t border-white/[0.06]">
+            <label className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider block mt-4 mb-1.5">API Keys</label>
+            <p className="text-[10px] text-zinc-700 mb-2.5">
+              Use a key as a <code className="text-zinc-500">Bearer</code> token against <code className="text-zinc-500">/api/v1/*</code> to connect external apps to your projects and tasks.
+            </p>
+
+            {mintedKey && (
+              <div className="mb-2.5 p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06]">
+                <p className="text-[10px] text-emerald-400 mb-1">Copy this now — it won&apos;t be shown again:</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-[11px] text-zinc-200 break-all select-all">{mintedKey}</code>
+                  <button type="button" onClick={() => navigator.clipboard.writeText(mintedKey)}
+                    className="shrink-0 text-[10px] text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-lg px-2 py-1 transition-colors">
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5 mb-2.5">
+              {apiKeys.filter(k => !k.revokedAt).map(k => (
+                <div key={k.id} className="flex items-center justify-between gap-2 bg-white/[0.02] border border-white/[0.05] rounded-xl px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-xs text-zinc-300 truncate">{k.name}</p>
+                    <p className="text-[10px] text-zinc-700">{k.keyPrefix}… · {k.lastUsedAt ? `used ${new Date(k.lastUsedAt).toLocaleDateString()}` : "never used"}</p>
+                  </div>
+                  <button type="button" onClick={() => handleRevokeKey(k.id)}
+                    className="shrink-0 text-[10px] text-red-500 hover:text-red-400 transition-colors">
+                    Revoke
+                  </button>
+                </div>
+              ))}
+              {apiKeys.filter(k => !k.revokedAt).length === 0 && (
+                <p className="text-[10px] text-zinc-700">No active keys.</p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <input type="text" value={newKeyName} onChange={e => setNewKeyName(e.target.value)}
+                placeholder="Key name (e.g. Zapier)"
+                className="flex-1 bg-[#111116] border border-white/[0.07] focus:border-cyan-500/30 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-700 outline-none transition-colors"
+              />
+              <button type="button" disabled={creatingKey || !newKeyName.trim()} onClick={handleCreateKey}
+                className="shrink-0 px-3 py-2 text-xs font-semibold text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 rounded-xl hover:bg-cyan-500/20 transition-all disabled:opacity-40">
+                {creatingKey ? "Creating…" : "Create key"}
+              </button>
             </div>
           </div>
 

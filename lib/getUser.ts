@@ -16,20 +16,14 @@ const getSession = cache(() => auth.getSession());
 const AUTH_CACHE = new Map<string, { role: UserRole; exp: number }>();
 const CACHE_TTL  = 60_000;
 
-export async function getAuthorizedUser(): Promise<AuthResult> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result: any = await getSession();
-  const user = result?.user ?? result?.data?.user;
-  if (!user?.email) return { ok: false, status: 401 };
-
-  const email: string  = user.email;
-  const userId: string = user.id;
-
+// Shared by cookie-session auth and API-key auth — resolves role for an
+// already-verified identity (email/userId pair). Returns null if the email
+// has no AppUser record (not whitelisted).
+export async function resolveAuth(email: string, userId: string): Promise<AuthResult> {
   if (email === process.env.AUTHORIZED_EMAIL) {
     return { ok: true, userId, email, role: "ADMIN", isAdmin: true, canEdit: true };
   }
 
-  // Check cache first — avoids DB round-trip on repeated requests
   const cached = AUTH_CACHE.get(email);
   if (cached && cached.exp > Date.now()) {
     const role = cached.role;
@@ -42,6 +36,15 @@ export async function getAuthorizedUser(): Promise<AuthResult> {
   const role = appUser.role as UserRole;
   AUTH_CACHE.set(email, { role, exp: Date.now() + CACHE_TTL });
   return { ok: true, userId, email, role, isAdmin: role === "ADMIN", canEdit: role !== "VIEWER" };
+}
+
+export async function getAuthorizedUser(): Promise<AuthResult> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result: any = await getSession();
+  const user = result?.user ?? result?.data?.user;
+  if (!user?.email) return { ok: false, status: 401 };
+
+  return resolveAuth(user.email, user.id);
 }
 
 // Invalidate cache when admin changes a user's role

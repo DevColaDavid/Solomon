@@ -60,6 +60,23 @@ model AppUser {
   @@map("users")
 }
 
+// External API keys — let outside applications authenticate against the
+// public API (`/api/v1/*`) with a Bearer token instead of a session cookie.
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  keyPrefix  String                        // first chars, shown in UI for identification
+  keyHash    String    @unique             // sha256 of the full secret; secret itself is never stored
+  userId     String                        // neon_auth user id — acts as this user for API access
+  email      String                        // resolves role (VIEWER/MEMBER/ADMIN) at request time
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
 // ─────────────────────────────────────────────────────────────────
 //  PROJECTS  (top-level workspace containers)
 //  Project
